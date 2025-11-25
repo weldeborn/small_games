@@ -909,7 +909,7 @@
             }
 
             // Comet Logic
-            if (Math.random() < 0.001) {
+            if (Math.random() < 0.003) { // Increased spawn rate
                 spawnComet();
             }
             updateComets(delta);
@@ -1087,8 +1087,22 @@
                     const impactPos = c.mesh.position;
                     if (!player.isDead && player.mesh.position.distanceTo(impactPos) < 15) {
                         // Player hit!
-                        player.die();
-                        triggerGameOver();
+                        // Non-lethal: Lose 50% mass
+                        const massLoss = player.scale * 0.5;
+                        player.grow(-massLoss);
+
+                        // Scatter mass as food
+                        const foodCount = Math.floor(massLoss * 10); // 10 food per 1 scale lost
+                        for (let k = 0; k < foodCount; k++) {
+                            if (foods.length > 0) {
+                                const template = foods[0].userData;
+                                spawnFoodAt(template.geometry, template.material, template.outlineGeo, player.mesh.position);
+                            }
+                        }
+
+                        // Push player away
+                        const pushDir = new THREE.Vector3().subVectors(player.mesh.position, impactPos).normalize();
+                        player.velocity.add(pushDir.multiplyScalar(50));
                     }
 
                     scene.remove(c.mesh);
