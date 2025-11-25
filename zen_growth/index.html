@@ -177,6 +177,7 @@
         <div class="content">
             <h1>ZEN GROWTH</h1>
             <p>Click to Begin</p>
+            <p style="font-size: 1rem; margin-top: 20px;">Mouse to Move • WASD to Rotate Camera</p>
         </div>
     </div>
 
@@ -306,21 +307,21 @@
             }
 
             updatePlayerInput(delta) {
-                // WASD Movement relative to Camera Yaw
-                const moveDir = new THREE.Vector3();
+                // Mouse Movement (Raycast to floor)
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObject(floorPlane);
 
-                if (input.forward) moveDir.z -= 1;
-                if (input.backward) moveDir.z += 1;
-                if (input.left) moveDir.x -= 1;
-                if (input.right) moveDir.x += 1;
+                if (intersects.length > 0) {
+                    const targetPoint = intersects[0].point;
+                    targetPoint.y = this.mesh.position.y; // Keep height
 
-                if (moveDir.lengthSq() > 0) {
-                    moveDir.normalize();
+                    const dir = new THREE.Vector3().subVectors(targetPoint, this.mesh.position);
+                    const dist = dir.length();
 
-                    // Rotate moveDir by camera yaw
-                    moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraState.yaw);
-
-                    this.velocity.add(moveDir.multiplyScalar(CONFIG.playerSpeed * delta));
+                    if (dist > 1) { // Deadzone
+                        dir.normalize();
+                        this.velocity.add(dir.multiplyScalar(CONFIG.playerSpeed * delta));
+                    }
                 }
 
                 // Speed Lines
@@ -579,26 +580,14 @@
 
             window.addEventListener('resize', onWindowResize, false);
 
-            // Mouse Look
+            // Mouse Move (Track position for Raycast)
             document.addEventListener('mousemove', (e) => {
-                if (isGameActive) {
-                    const sensitivity = 0.002;
-                    cameraState.targetYaw -= e.movementX * sensitivity;
-                    cameraState.targetPitch -= e.movementY * sensitivity;
-
-                    // Clamp pitch
-                    cameraState.targetPitch = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, cameraState.targetPitch));
-                }
+                // Normalize mouse coordinates
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             }, false);
 
-            // Pointer Lock
-            document.getElementById('canvas-container').addEventListener('click', () => {
-                if (isGameActive) {
-                    document.body.requestPointerLock();
-                }
-            });
-
-            // WASD
+            // WASD (Camera Control)
             document.addEventListener('keydown', (e) => {
                 switch (e.code) {
                     case 'KeyW': input.forward = true; break;
@@ -627,7 +616,7 @@
                 setTimeout(() => startOverlay.remove(), 500);
                 audioController.start();
                 isGameActive = true;
-                document.body.requestPointerLock();
+                // No pointer lock
             });
 
             const gameOverOverlay = document.getElementById('game-over-overlay');
@@ -646,6 +635,16 @@
         }
 
         function updateCamera() {
+            // WASD Camera Control
+            const camSpeed = 0.03;
+            if (input.left) cameraState.targetYaw += camSpeed;
+            if (input.right) cameraState.targetYaw -= camSpeed;
+            if (input.forward) cameraState.targetPitch -= camSpeed;
+            if (input.backward) cameraState.targetPitch += camSpeed;
+
+            // Clamp pitch
+            cameraState.targetPitch = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, cameraState.targetPitch));
+
             // Smoothly interpolate rotation
             cameraState.yaw += (cameraState.targetYaw - cameraState.yaw) * 0.1;
             cameraState.pitch += (cameraState.targetPitch - cameraState.pitch) * 0.1;
@@ -655,9 +654,6 @@
             const height = CONFIG.cameraHeight + (player.scale * 3);
 
             // Orbit logic
-            // We want the camera to be behind the player based on yaw
-            // And height based on pitch
-
             const hDist = dist * Math.cos(cameraState.pitch);
             const vDist = dist * Math.sin(cameraState.pitch);
 
