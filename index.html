@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-color: #f8fafc;
+            --accent-color: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.1) 0%, transparent 40%);
+            overflow-x: hidden;
+        }
+
+        header {
+            margin-top: 4rem;
+            margin-bottom: 3rem;
+            text-align: center;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+            text-shadow: 0 0 30px rgba(255,255,255,0.1);
+        }
+
+        p.subtitle {
+            font-size: 1.2rem;
+            color: #94a3b8;
+            font-weight: 300;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 2rem;
+            padding: 1rem;
+            animation: fadeInUp 1s ease-out 0.3s backwards;
+        }
+
+        .game-card {
+            background: var(--card-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 2rem;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 250px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .game-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent 0%, rgba(255,255,255,0.03) 100%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .game-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            border-color: var(--accent-color);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1), 0 0 20px var(--accent-glow);
+        }
+
+        .game-card:hover::before {
+            opacity: 1;
+        }
+
+        .game-title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+
+        .game-desc {
+            font-size: 1rem;
+            color: #cbd5e1;
+            line-height: 1.5;
+            flex-grow: 1;
+        }
+
+        .play-btn {
+            margin-top: 1.5rem;
+            align-self: flex-start;
+            padding: 0.75rem 1.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .game-card:hover .play-btn {
+            background: var(--accent-color);
+            color: #0f172a;
+        }
+
+        .play-icon {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5rem; }
+            .container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Arcade Portal</h1>
+        <p class="subtitle">Select a game to begin your journey</p>
+    </header>
+
+    <div class="container">
+        <!-- Game: Zen Growth -->
+        <a href="./zen_growth/index.html" class="game-card">
+            <div>
+                <div class="game-title">Zen Growth</div>
+                <div class="game-desc">A relaxing game about growth and collecting orbs in a 3D manga-inspired world.</div>
+            </div>
+            <div class="play-btn">
+                Play Now
+                <svg class="play-icon" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+            </div>
+        </a>
+
+        <!-- Placeholder for future games -->
+        <!-- 
+        <a href="#" class="game-card" style="opacity: 0.5; cursor: default;">
+            <div>
+                <div class="game-title">Coming Soon</div>
+                <div class="game-desc">More adventures await...</div>
+            </div>
+        </a> 
+        -->
+    </div>
+
+</body>
+</html>
