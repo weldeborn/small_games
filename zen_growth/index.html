@@ -144,6 +144,46 @@
             -webkit-text-stroke: 3px black;
         }
 
+        #leaderboard {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            pointer-events: none;
+            z-index: 10;
+            min-width: 200px;
+        }
+
+        #leaderboard h3 {
+            margin: 0 0 10px 0;
+            text-align: center;
+            font-size: 1.2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 5px;
+        }
+
+        #leaderboard ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        #leaderboard li {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 1rem;
+        }
+
+        #leaderboard li.player {
+            color: #ffd93d;
+            font-weight: bold;
+        }
+
         @keyframes pulse {
             0% {
                 opacity: 0.5;
@@ -171,6 +211,12 @@
         <p>Size: <span id="score">1.0</span></p>
         <p>Alive: <span id="alive-count">10</span></p>
     </div>
+    <div id="leaderboard">
+        <h3>LEADERBOARD</h3>
+        <ul id="leaderboard-list">
+            <!-- Items injected via JS -->
+        </ul>
+    </div>
     <div id="canvas-container"></div>
 
     <div id="start-overlay">
@@ -194,32 +240,36 @@
             fogColor: 0xa8d8ea,
             cameraDistance: 15,
             cameraHeight: 10,
-            playerSpeed: 40, // Faster
-            botSpeed: 25,    // Faster
+            playerSpeed: 40,
+            botSpeed: 25,
             playerDamping: 0.92,
             botDamping: 0.95,
             growthFactor: 0.05,
             foodCount: 80,
             botCount: 10,
-            worldSize: 100   // Smaller
+            worldSize: 100
         };
 
         // --- Globals ---
         let scene, camera, renderer;
-        let player;
-        let bots = [];
-        let clock;
+        let player, bots = [], foods = [], particles = [];
         let raycaster, mouse;
+        let clock;
+        let isGameActive = false;
+        let audioController;
         let floorPlane;
-        let foods = [];
-        let particles = [];
+        let gridHelper;
+        let gradientTexture;
         let comets = [];
         let powerups = [];
-        let gradientTexture;
-        let audioController;
-        let isGameActive = false;
+        let cameraState = { yaw: 0, pitch: 0.5, targetYaw: 0, targetPitch: 0.5 };
 
-        // Input State
+        const botNames = [
+            "Alpha", "Beta", "Gamma", "Delta", "Epsilon",
+            "Zeta", "Eta", "Theta", "Iota", "Kappa",
+            "Lambda", "Mu", "Nu", "Xi", "Omicron"
+        ];
+
         const input = {
             forward: false,
             backward: false,
@@ -231,51 +281,52 @@
             dash: false
         };
 
-        const cameraState = {
-            yaw: 0,
-            pitch: 0.5, // Radians
-            targetPitch: 0.5,
-            targetYaw: 0
-        };
-
         // --- Classes ---
         class Blob {
-            constructor(isPlayer = false, color = 0xff6b6b) {
+            constructor(isPlayer, color, name = null) {
                 this.isPlayer = isPlayer;
                 this.scale = 1;
-                this.score = 1;
-                this.velocity = new THREE.Vector3();
+                this.score = 1.0;
                 this.isDead = false;
-                this.hasMagnet = false;
+                this.velocity = new THREE.Vector3();
+                this.aiTimer = 0;
+                this.aiState = 'wander';
+                this.target = new THREE.Vector3();
+
+                // Name Assignment
+                if (this.isPlayer) {
+                    this.name = "You";
+                } else {
+                    this.name = name || botNames[Math.floor(Math.random() * botNames.length)];
+                }
 
                 // Mesh
-                const geometry = new THREE.SphereGeometry(1, 32, 32);
+                const geometry = new THREE.IcosahedronGeometry(1, 1);
                 const material = new THREE.MeshToonMaterial({
                     color: color,
                     gradientMap: gradientTexture
                 });
 
-                this.mesh = new THREE.Group();
-                this.body = new THREE.Mesh(geometry, material);
-                this.body.castShadow = true;
-                this.body.receiveShadow = true;
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.castShadow = true;
+                this.mesh.receiveShadow = true;
+                this.mesh.position.set(
+                    (Math.random() - 0.5) * CONFIG.worldSize,
+                    1,
+                    (Math.random() - 0.5) * CONFIG.worldSize
+                );
 
-                this.outline = createOutline(geometry, 0x000000, 1.03);
-
-                this.mesh.add(this.body);
+                // Outline
+                this.outline = createOutline(geometry, 0x000000);
                 this.mesh.add(this.outline);
 
-                // Random Start Pos
-                const angle = Math.random() * Math.PI * 2;
-                const radius = Math.random() * (CONFIG.worldSize - 10);
-                this.mesh.position.set(Math.cos(angle) * radius, 1, Math.sin(angle) * radius);
+                // Physics Body (Simple Sphere)
+                this.body = new THREE.Object3D();
+                this.body.add(this.mesh);
+                scene.add(this.body);
 
-                scene.add(this.mesh);
-
-                // AI State
-                this.aiState = 'wander';
-                this.aiTimer = 0;
-                this.target = new THREE.Vector3();
+                // Add ID for easy lookup
+                this.mesh.userData = { parent: this };
             }
 
             update(delta, time) {
@@ -321,7 +372,8 @@
                     const dir = new THREE.Vector3().subVectors(targetPoint, this.mesh.position);
                     const dist = dir.length();
 
-                    if (dist > 1) { // Deadzone
+                    if (dist > 1) {
+                        // Deadzone
                         dir.normalize();
 
                         // Sprint Logic
@@ -412,13 +464,11 @@
 
                 // Execute State
                 const direction = new THREE.Vector3();
-
                 if (this.aiState === 'flee') {
                     direction.subVectors(this.mesh.position, this.target); // Run away
                 } else {
                     direction.subVectors(this.target, this.mesh.position); // Run towards
                 }
-
                 direction.y = 0;
                 direction.normalize();
                 this.velocity.add(direction.multiplyScalar(CONFIG.botSpeed * delta));
@@ -428,6 +478,10 @@
                 this.scale += amount;
                 this.score = (1 + (this.scale - 1) * 10).toFixed(1);
                 this.mesh.scale.setScalar(this.scale);
+
+                if (this.isPlayer && parseFloat(this.score) >= 150) {
+                    triggerWin();
+                }
             }
 
             die() {
@@ -459,7 +513,6 @@
                 this.masterGain = this.ctx.createGain();
                 this.masterGain.gain.value = 0.3;
                 this.masterGain.connect(this.ctx.destination);
-
                 this.isPlaying = false;
             }
 
@@ -618,7 +671,9 @@
             camera.position.set(0, CONFIG.cameraHeight, CONFIG.cameraDistance);
 
             // Renderer Setup
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer = new THREE.WebGLRenderer({
+                antialias: true, alpha: false
+            });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
@@ -646,30 +701,47 @@
             // Textures
             gradientTexture = createGradientTexture();
 
+            // Ground
+            const planeGeometry = new THREE.PlaneGeometry(CONFIG.worldSize * 2, CONFIG.worldSize * 2, 32, 32);
+
+            // Uneven terrain
+            const posAttribute = planeGeometry.attributes.position;
+            for (let i = 0; i < posAttribute.count; i++) {
+                const x = posAttribute.getX(i);
+                const y = posAttribute.getY(i);
+                const z = posAttribute.getZ(i);
+                // Add some noise
+                const height = Math.sin(x * 0.1) * Math.cos(y * 0.1) * 2;
+                posAttribute.setZ(i, z + height);
+            }
+            planeGeometry.computeVertexNormals();
+
+            const planeMaterial = new THREE.MeshToonMaterial({
+                color: 0x88cc88,
+                gradientMap: gradientTexture
+            });
+            floorPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+            floorPlane.rotation.x = -Math.PI / 2;
+            floorPlane.receiveShadow = true;
+            scene.add(floorPlane);
+
+            // Grid
+            gridHelper = new THREE.GridHelper(CONFIG.worldSize * 2, 50, 0xffffff, 0xffffff);
+            gridHelper.material.opacity = 0.3;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+
             // Player Setup
             player = new Blob(true, 0xff6b6b);
 
             // Bots Setup
             for (let i = 0; i < CONFIG.botCount; i++) {
                 // Random pastel color
-                const color = new THREE.Color().setHSL(Math.random(), 0.7, 0.7);
+                const hue = Math.random();
+                const color = new THREE.Color().setHSL(hue, 0.7, 0.6);
                 const bot = new Blob(false, color);
                 bots.push(bot);
             }
-
-            // Floor
-            const planeGeo = new THREE.PlaneGeometry(CONFIG.worldSize * 3, CONFIG.worldSize * 3);
-            const planeMat = new THREE.MeshBasicMaterial({ visible: false });
-            floorPlane = new THREE.Mesh(planeGeo, planeMat);
-            floorPlane.rotation.x = -Math.PI / 2;
-            scene.add(floorPlane);
-
-            // Grid
-            const gridHelper = new THREE.GridHelper(CONFIG.worldSize * 2, 40, 0xffffff, 0xffffff);
-            gridHelper.position.y = -1;
-            gridHelper.material.opacity = 0.3;
-            gridHelper.material.transparent = true;
-            scene.add(gridHelper);
 
             // Food
             initFood();
@@ -791,20 +863,14 @@
             const mesh = new THREE.Mesh(geometry, material);
             mesh.castShadow = true;
             mesh.receiveShadow = true;
-
             const outline = createOutline(outlineGeo, 0x000000, 1.05);
-
             group.add(mesh);
             group.add(outline);
 
             // Random position
             const angle = Math.random() * Math.PI * 2;
             const radius = 10 + Math.random() * (CONFIG.worldSize - 10);
-            group.position.set(
-                Math.cos(angle) * radius,
-                0.5,
-                Math.sin(angle) * radius
-            );
+            group.position.set(Math.cos(angle) * radius, 0.5, Math.sin(angle) * radius);
 
             group.userData = {
                 floatSpeed: 1 + Math.random(),
@@ -830,19 +896,12 @@
                 mesh.position.copy(position);
                 mesh.position.x += (Math.random() - 0.5);
                 mesh.position.z += (Math.random() - 0.5);
-
                 const velocity = new THREE.Vector3(
                     (Math.random() - 0.5) * 5,
                     Math.random() * 5 + 2,
                     (Math.random() - 0.5) * 5
                 );
-
-                particles.push({
-                    mesh: mesh,
-                    velocity: velocity,
-                    life: 1.0
-                });
-
+                particles.push({ mesh: mesh, velocity: velocity, life: 1.0 });
                 scene.add(mesh);
             }
         }
@@ -872,7 +931,29 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        function updateLeaderboard() {
+            // Combine player and bots
+            const allBlobs = [player, ...bots].filter(b => !b.isDead);
+
+            // Sort by score (descending)
+            allBlobs.sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
+
+            // Update UI
+            const list = document.getElementById('leaderboard-list');
+            if (list) {
+                list.innerHTML = '';
+                allBlobs.forEach((blob, index) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>${index + 1}. ${blob.name}</span><span>${blob.score}</span>`;
+                    if (blob.isPlayer) li.classList.add('player');
+                    list.appendChild(li);
+                });
+            }
+        }
+
         function updateGameLogic(delta, time) {
+            updateLeaderboard();
+
             // Update Player
             if (!player.isDead) {
                 player.update(delta, time);
@@ -894,7 +975,6 @@
                 for (let j = i + 1; j < allBlobs.length; j++) {
                     const a = allBlobs[i];
                     const b = allBlobs[j];
-
                     const dist = a.mesh.position.distanceTo(b.mesh.position);
                     const minDist = a.scale + b.scale;
 
@@ -930,6 +1010,7 @@
                 // Player
                 if (!player.isDead) {
                     const dist = player.mesh.position.distanceTo(group.position);
+
                     // Magnet Effect
                     if (player.hasMagnet && dist < 15) {
                         const dir = new THREE.Vector3().subVectors(player.mesh.position, group.position).normalize();
@@ -954,13 +1035,15 @@
             }
         }
 
-        // --- Powerups ---
         function spawnPowerup() {
             const type = Math.random() > 0.5 ? 'speed' : 'magnet';
             const color = type === 'speed' ? 0x00ffff : 0x9900ff;
             const geometry = type === 'speed' ? new THREE.BoxGeometry(1, 1, 1) : new THREE.ConeGeometry(0.7, 1.5, 4);
 
-            const material = new THREE.MeshToonMaterial({ color: color, gradientMap: gradientTexture });
+            const material = new THREE.MeshToonMaterial({
+                color: color,
+                gradientMap: gradientTexture
+            });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.castShadow = true;
 
@@ -1046,9 +1129,18 @@
 
         // --- Comet System ---
         function spawnComet() {
-            const geometry = new THREE.SphereGeometry(2, 16, 16);
-            const material = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+            const geometry = new THREE.IcosahedronGeometry(2, 1); // Jagged
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xff4400,
+                emissive: 0xff2200,
+                roughness: 0.8,
+                flatShading: true
+            });
             const mesh = new THREE.Mesh(geometry, material);
+
+            // Light
+            const light = new THREE.PointLight(0xffaa00, 1, 30);
+            mesh.add(light);
 
             // Start high up
             const angle = Math.random() * Math.PI * 2;
@@ -1069,80 +1161,47 @@
             for (let i = comets.length - 1; i >= 0; i--) {
                 const c = comets[i];
                 c.mesh.position.add(c.velocity.clone().multiplyScalar(delta));
+                c.mesh.rotation.x += delta;
+                c.mesh.rotation.y += delta;
+
+                // Trail
+                if (Math.random() < 0.3) {
+                    spawnParticles(c.mesh.position, 0xff4400, 1);
+                }
 
                 // Check impact
                 if (c.mesh.position.y <= 0.5) {
                     // Boom
                     spawnParticles(c.mesh.position, 0xff4400, 30);
 
-                    // Spawn Food Cluster
-                    for (let k = 0; k < 8; k++) {
-                        if (foods.length > 0) {
-                            const template = foods[0].userData;
-                            spawnFoodAt(template.geometry, template.material, template.outlineGeo, c.mesh.position);
-                        }
-                    }
-
-                    // Damage Check (Circle)
+                    // Create Crater
                     const impactPos = c.mesh.position;
-                    if (!player.isDead && player.mesh.position.distanceTo(impactPos) < 15) {
-                        // Player hit!
-                        // Non-lethal: Lose 50% mass
-                        const massLoss = player.scale * 0.5;
-                        player.grow(-massLoss);
+                    const craterRadius = 8;
+                    const positions = floorPlane.geometry.attributes.position;
+                    const v3 = new THREE.Vector3();
 
-                        // Scatter mass as food
-                        const foodCount = Math.floor(massLoss * 10); // 10 food per 1 scale lost
-                        for (let k = 0; k < foodCount; k++) {
-                            if (foods.length > 0) {
-                                const template = foods[0].userData;
-                                spawnFoodAt(template.geometry, template.material, template.outlineGeo, player.mesh.position);
-                            }
+                    for (let k = 0; k < positions.count; k++) {
+                        v3.fromBufferAttribute(positions, k);
+                        // Local (x, y, z) -> World (x, z, -y) roughly?
+                        // Easier: just distance check on X/Y of plane geometry vs X/Z of impact
+                        const dx = v3.x - impactPos.x;
+                        const dy = v3.y - impactPos.z; // Plane Y maps to World Z
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < craterRadius) {
+                            const depth = (1 - dist / craterRadius) * 3;
+                            let z = positions.getZ(k);
+                            z -= depth; // Lower the ground
+                            positions.setZ(k, z);
                         }
-
-                        // Push player away
-                        const pushDir = new THREE.Vector3().subVectors(player.mesh.position, impactPos).normalize();
-                        player.velocity.add(pushDir.multiplyScalar(50));
                     }
+                    positions.needsUpdate = true;
+                    floorPlane.geometry.computeVertexNormals();
 
                     scene.remove(c.mesh);
                     comets.splice(i, 1);
                 }
             }
-        }
-
-        function spawnFoodAt(geometry, material, outlineGeo, centerPos) {
-            const group = new THREE.Group();
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-
-            const outline = createOutline(outlineGeo, 0x000000, 1.05);
-
-            group.add(mesh);
-            group.add(outline);
-
-            // Random position around center
-            const angle = Math.random() * Math.PI * 2;
-            const radius = Math.random() * 10;
-            group.position.set(
-                centerPos.x + Math.cos(angle) * radius,
-                0.5,
-                centerPos.z + Math.sin(angle) * radius
-            );
-
-            group.userData = {
-                floatSpeed: 1 + Math.random(),
-                floatOffset: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 2,
-                baseY: 0.5,
-                geometry: geometry,
-                material: material,
-                outlineGeo: outlineGeo
-            };
-
-            scene.add(group);
-            foods.push(group);
         }
 
         function collectFood(blob, group, index) {
@@ -1156,7 +1215,6 @@
 
         function animate() {
             requestAnimationFrame(animate);
-
             const delta = clock.getDelta();
             const time = clock.getElapsedTime();
 
